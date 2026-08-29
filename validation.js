@@ -69,6 +69,8 @@ export const LIMITS = {
   UNCERTAINTY_MAX: 200,
   UNCERTAINTIES_MAX: 10,
   PASTE_JSON_MAX_CHARS: 20000,
+  BULK_PASTE_JSON_MAX_CHARS: 200000,
+  BULK_IMPORT_MAX_ITEMS: 50,
 };
 
 // ---------- normalization helpers ----------
@@ -328,6 +330,37 @@ export function validateDrinkFields(input) {
   };
 }
 
+function parseAnalysis(rawAnalysis, errors) {
+  if (rawAnalysis === undefined || rawAnalysis === null) return null;
+  if (typeof rawAnalysis !== "object" || Array.isArray(rawAnalysis)) {
+    pushError(errors, "analysis", "deve ser um objeto");
+    return null;
+  }
+  const summary = validateOptionalShortText(rawAnalysis.summary, "analysis.summary", LIMITS.SUMMARY_MAX, errors);
+  let confidence = null;
+  if (rawAnalysis.confidence !== undefined && rawAnalysis.confidence !== null) {
+    const c = normalizeText(rawAnalysis.confidence).toLowerCase();
+    if (!CONFIDENCE_VALUES.has(c)) {
+      pushError(errors, "analysis.confidence", `valor inválido: ${JSON.stringify(rawAnalysis.confidence)}`);
+    } else {
+      confidence = c;
+    }
+  }
+  let uncertainties = [];
+  if (rawAnalysis.uncertainties !== undefined && rawAnalysis.uncertainties !== null) {
+    if (!Array.isArray(rawAnalysis.uncertainties)) {
+      pushError(errors, "analysis.uncertainties", "deve ser uma lista de strings");
+    } else {
+      uncertainties = rawAnalysis.uncertainties
+        .slice(0, LIMITS.UNCERTAINTIES_MAX)
+        .map((u) => normalizeText(u))
+        .filter(Boolean)
+        .map((u) => (u.length > LIMITS.UNCERTAINTY_MAX ? u.slice(0, LIMITS.UNCERTAINTY_MAX) : u));
+    }
+  }
+  return { summary, confidence, uncertainties };
+}
+
 /**
  * Validates a full AI-generated import payload:
  * { schema_version, drink: {...}, analysis?: {...} }
@@ -358,42 +391,85 @@ export function validateImportPayload(rawText) {
   if (parsed.schema_version !== undefined && typeof parsed.schema_version !== "string") {
     pushError(errors, "schema_version", "deve ser string");
   }
-  const { valid, errors: fieldErrors, drink } = validateDrinkFields(parsed.drink);
+  const { errors: fieldErrors, drink } = validateDrinkFields(parsed.drink);
   errors.push(...fieldErrors);
 
-  let analysis = null;
-  if (parsed.analysis !== undefined && parsed.analysis !== null) {
-    if (typeof parsed.analysis !== "object" || Array.isArray(parsed.analysis)) {
-      pushError(errors, "analysis", "deve ser um objeto");
-    } else {
-      const summary = validateOptionalShortText(parsed.analysis.summary, "analysis.summary", LIMITS.SUMMARY_MAX, errors);
-      let confidence = null;
-      if (parsed.analysis.confidence !== undefined && parsed.analysis.confidence !== null) {
-        const c = normalizeText(parsed.analysis.confidence).toLowerCase();
-        if (!CONFIDENCE_VALUES.has(c)) {
-          pushError(errors, "analysis.confidence", `valor inválido: ${JSON.stringify(parsed.analysis.confidence)}`);
-        } else {
-          confidence = c;
-        }
-      }
-      let uncertainties = [];
-      if (parsed.analysis.uncertainties !== undefined && parsed.analysis.uncertainties !== null) {
-        if (!Array.isArray(parsed.analysis.uncertainties)) {
-          pushError(errors, "analysis.uncertainties", "deve ser uma lista de strings");
-        } else {
-          uncertainties = parsed.analysis.uncertainties
-            .slice(0, LIMITS.UNCERTAINTIES_MAX)
-            .map((u) => normalizeText(u))
-            .filter(Boolean)
-            .map((u) => (u.length > LIMITS.UNCERTAINTY_MAX ? u.slice(0, LIMITS.UNCERTAINTY_MAX) : u));
-        }
-      }
-      analysis = { summary, confidence, uncertainties };
-    }
-  }
+  const analysis = parseAnalysis(parsed.analysis, errors);
 
   if (errors.length) return { valid: false, errors, drink: null, analysis: null };
   return { valid: true, errors: [], drink, analysis };
+}
+
+/**
+ * Validates a bulk import payload for setting up several drinks at once.
+ * Accepts either a top-level JSON array of items, or an object of the form
+ * { schema_version, drinks: [...] }. Each item has the same shape as a
+ * single import payload's body: { drink: {...}, analysis?: {...} }.
+ * Every item is validated independently so partial success is possible —
+ * the caller decides what to do with the mix of valid/invalid items.
+ * Returns { valid, errors, items } where items is
+ * [{ index, valid, errors, drink, analysis }].
+ */
+export function validateBulkImportPayload(rawText) {
+  if (typeof rawText !== "string") {
+    return { valid: false, errors: ["entrada deve ser texto"], items: [] };
+  }
+  if (rawText.length > LIMITS.BULK_PASTE_JSON_MAX_CHARS) {
+    return {
+      valid: false,
+      errors: [`JSON colado excede ${LIMITS.BULK_PASTE_JSON_MAX_CHARS} caracteres`],
+      items: [],
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch (e) {
+    return { valid: false, errors: [`JSON inválido: ${e.message}`], items: [] };
+  }
+
+  let rawItems;
+  if (Array.isArray(parsed)) {
+    rawItems = parsed;
+  } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.drinks)) {
+    rawItems = parsed.drinks;
+  } else {
+    return {
+      valid: false,
+      errors: ['esperado uma lista (array) de drinks, ou um objeto com "drinks": [...]'],
+      items: [],
+    };
+  }
+
+  if (rawItems.length === 0) {
+    return { valid: false, errors: ["a lista está vazia"], items: [] };
+  }
+  if (rawItems.length > LIMITS.BULK_IMPORT_MAX_ITEMS) {
+    return {
+      valid: false,
+      errors: [`no máximo ${LIMITS.BULK_IMPORT_MAX_ITEMS} drinks por importação em lote`],
+      items: [],
+    };
+  }
+
+  const items = rawItems.map((raw, index) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return { index, valid: false, errors: ['item deve ser um objeto com "drink": {...}'], drink: null, analysis: null };
+    }
+    const errors = [];
+    const { errors: fieldErrors, drink } = validateDrinkFields(raw.drink);
+    errors.push(...fieldErrors);
+    const analysis = parseAnalysis(raw.analysis, errors);
+    if (errors.length) return { index, valid: false, errors, drink: null, analysis: null };
+    return { index, valid: true, errors: [], drink, analysis };
+  });
+
+  const validCount = items.filter((i) => i.valid).length;
+  return {
+    valid: validCount > 0,
+    errors: validCount === 0 ? ["nenhum item da lista é válido"] : [],
+    items,
+  };
 }
 
 // ---------- record-level validators (rating, comment, status) ----------

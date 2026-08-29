@@ -5,8 +5,10 @@ import {
   TECHNIQUES,
   UNITS,
   STATUSES,
+  LIMITS,
   validateDrinkFields,
   validateImportPayload,
+  validateBulkImportPayload,
   validateRating,
   validateComment,
   validateStatus,
@@ -52,6 +54,8 @@ let existingPhotoUrls = {}; // object URLs for the record currently open in the 
 let currentRating = null;
 let cardObjectUrls = new Map(); // recordId -> {primary?:url, secondary?:url} for list thumbnails
 let pendingImportDraft = null; // {drink, analysis} validated but not yet saved
+let selectionMode = false;
+let selectedIds = new Set();
 
 // ---------------------------------------------------------------------
 // Static option population
@@ -184,12 +188,17 @@ async function renderList() {
 
   $("#empty-state").hidden = allRecords.length !== 0;
   $("#no-results").hidden = !(allRecords.length > 0 && filtered.length === 0);
+  list.classList.toggle("is-selecting", selectionMode);
 
   const template = $("#drink-card-template");
   for (const record of filtered) {
     const node = template.content.firstElementChild.cloneNode(true);
     const d = record.import_data;
     node.dataset.id = record.id;
+
+    if (selectionMode && selectedIds.has(record.id)) {
+      $(".drink-card-select", node).classList.add("is-checked");
+    }
 
     $(".drink-card-name", node).textContent = d.name;
     $(".drink-card-spirit", node).textContent = spiritLabel[d.base_spirit] || d.base_spirit;
@@ -218,7 +227,13 @@ async function renderList() {
       });
     }
 
-    $(".drink-card-open", node).addEventListener("click", () => openEditForm(record.id));
+    $(".drink-card-open", node).addEventListener("click", () => {
+      if (selectionMode) {
+        toggleSelect(record.id, node);
+      } else {
+        openEditForm(record.id);
+      }
+    });
     list.appendChild(node);
   }
 }
@@ -271,6 +286,143 @@ $$(".status-tab").forEach((tab) => {
     filters.status = tab.dataset.status;
     renderList();
   });
+});
+
+// ---------------------------------------------------------------------
+// Selection mode + PDF export (browser print-to-PDF, no library needed)
+// ---------------------------------------------------------------------
+
+function toggleSelect(id, node) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  $(".drink-card-select", node).classList.toggle("is-checked", selectedIds.has(id));
+  updateSelectionBar();
+}
+
+function updateSelectionBar() {
+  const n = selectedIds.size;
+  $("#selection-count").textContent = `${n} selecionado${n === 1 ? "" : "s"}`;
+  $("#btn-export-pdf").disabled = n === 0;
+}
+
+$("#btn-select-mode").addEventListener("click", () => {
+  selectionMode = true;
+  selectedIds.clear();
+  $("#btn-select-mode").hidden = true;
+  $("#selection-bar").hidden = false;
+  document.body.classList.add("has-selection-bar");
+  updateSelectionBar();
+  renderList();
+});
+
+$("#btn-cancel-selection").addEventListener("click", () => {
+  selectionMode = false;
+  selectedIds.clear();
+  $("#btn-select-mode").hidden = false;
+  $("#selection-bar").hidden = true;
+  document.body.classList.remove("has-selection-bar");
+  renderList();
+});
+
+function qtyLabel(ing) {
+  if (ing.unit === "to_taste") return "a gosto";
+  if (ing.amount == null) return "";
+  const unit = UNITS.find((u) => u.value === ing.unit);
+  return unit ? `${ing.amount} ${unit.label}` : String(ing.amount);
+}
+
+async function buildPrintBlock(record) {
+  const d = record.import_data;
+  const article = document.createElement("article");
+  article.className = "print-drink";
+
+  const h2 = document.createElement("h2");
+  h2.textContent = d.name;
+  article.appendChild(h2);
+
+  const bits = [spiritLabel[d.base_spirit] || d.base_spirit];
+  if (d.technique) bits.push(techniqueLabel[d.technique] || d.technique);
+  if (record.rating) bits.push("★".repeat(record.rating));
+  const metaP = document.createElement("p");
+  metaP.className = "print-meta";
+  metaP.textContent = bits.join(" · ");
+  article.appendChild(metaP);
+
+  if (record.has_primary_photo) {
+    const { primaryPhoto } = await getPhotos(record.id);
+    if (primaryPhoto) {
+      const img = document.createElement("img");
+      img.className = "print-photo";
+      img.alt = "";
+      img.src = URL.createObjectURL(primaryPhoto.blob);
+      article.appendChild(img);
+    }
+  }
+
+  if (d.ingredients && d.ingredients.length) {
+    const h3 = document.createElement("h3");
+    h3.textContent = "Ingredientes";
+    article.appendChild(h3);
+    const ul = document.createElement("ul");
+    for (const ing of d.ingredients) {
+      const li = document.createElement("li");
+      const qty = qtyLabel(ing);
+      li.textContent = qty ? `${qty} — ${ing.name}` : ing.name;
+      ul.appendChild(li);
+    }
+    article.appendChild(ul);
+  }
+
+  const line2 = [];
+  if (d.glassware) line2.push(`Copo: ${d.glassware}`);
+  if (d.ice) line2.push(`Gelo: ${d.ice}`);
+  if (d.garnish) line2.push(`Guarnição: ${d.garnish}`);
+  if (line2.length) {
+    const p = document.createElement("p");
+    p.className = "print-meta";
+    p.textContent = line2.join(" · ");
+    article.appendChild(p);
+  }
+
+  if (d.instructions && d.instructions.length) {
+    const h3 = document.createElement("h3");
+    h3.textContent = "Modo de preparo";
+    article.appendChild(h3);
+    const ol = document.createElement("ol");
+    for (const step of d.instructions) {
+      const li = document.createElement("li");
+      li.textContent = step;
+      ol.appendChild(li);
+    }
+    article.appendChild(ol);
+  }
+
+  if (record.comment) {
+    const h3 = document.createElement("h3");
+    h3.textContent = "Comentários";
+    article.appendChild(h3);
+    const p = document.createElement("p");
+    p.textContent = record.comment;
+    article.appendChild(p);
+  }
+
+  return article;
+}
+
+$("#btn-export-pdf").addEventListener("click", async () => {
+  if (selectedIds.size === 0) return;
+  const ordered = [...allRecords]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .filter((r) => selectedIds.has(r.id));
+
+  const container = $("#print-area");
+  container.textContent = "";
+  // Sequential: avoids holding many decoded photo blobs in memory at once.
+  for (const record of ordered) {
+    const block = await buildPrintBlock(record);
+    container.appendChild(block);
+  }
+  window.print();
 });
 
 // ---------------------------------------------------------------------
@@ -726,7 +878,34 @@ const PROMPT_TEMPLATE = `Analise esse drink (link, legenda e/ou print em anexo) 
 
 Use null quando não tiver certeza de um valor (não invente quantidade). Liste em "uncertainties" o que foi estimado ou não apareceu no material.`;
 
+const PROMPT_TEMPLATE_BULK = `Analise cada um desses drinks (links, legendas e/ou prints em anexo) e gere APENAS um JSON, sem nenhum texto antes ou depois, com uma lista — um item por drink, cada item no mesmo formato de "drink" + "analysis" abaixo:
+
+{
+  "schema_version": "1.0.0",
+  "drinks": [
+    {
+      "drink": {
+        "name": "",
+        "base_spirit": "rum | gin | vodka | whisky | tequila | cachaca | conhaque | licor | vinho | cerveja | sem_alcool | outro",
+        "tags": [],
+        "ingredients": [{"name": "", "amount": 0, "unit": "ml | oz | dash | barspoon | piece | to_taste", "optional": false}],
+        "technique": "build | stir | shake | blend | muddle | other",
+        "glassware": "",
+        "ice": "",
+        "garnish": "",
+        "instructions": [""],
+        "source": "",
+        "estimated_abv_percent": null
+      },
+      "analysis": { "summary": "", "confidence": "high | medium | low", "uncertainties": [""] }
+    }
+  ]
+}
+
+Um objeto por drink dentro de "drinks". Use null quando não tiver certeza (não invente quantidade). Liste em "uncertainties" o que foi estimado. No máximo ${LIMITS.BULK_IMPORT_MAX_ITEMS} drinks por vez.`;
+
 $("#import-prompt-template").textContent = PROMPT_TEMPLATE;
+$("#import-prompt-bulk-template").textContent = PROMPT_TEMPLATE_BULK;
 $("#copy-prompt").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(PROMPT_TEMPLATE);
@@ -735,33 +914,64 @@ $("#copy-prompt").addEventListener("click", async () => {
     showToast("Não foi possível copiar automaticamente — selecione o texto manualmente.");
   }
 });
+$("#copy-prompt-bulk").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(PROMPT_TEMPLATE_BULK);
+    showToast("Instrução copiada.");
+  } catch (_) {
+    showToast("Não foi possível copiar automaticamente — selecione o texto manualmente.");
+  }
+});
+
+let importMode = null; // "single" | "bulk" | null
+let pendingBulkItems = null; // validated bulk items, with a `include` flag added per item
 
 function openImportDialog() {
   $("#import-json-input").value = "";
   $("#import-errors").hidden = true;
   $("#import-preview").hidden = true;
+  $("#import-preview").textContent = "";
   $("#import-save").disabled = true;
+  $("#import-save").textContent = "Salvar drink";
   pendingImportDraft = null;
+  pendingBulkItems = null;
+  importMode = null;
   openDialog(importDialog);
+}
+
+function detectImportShape(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return "bulk";
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.drinks)) return "bulk";
+    return "single";
+  } catch (_) {
+    return "single"; // let the single-item validator report the JSON error consistently
+  }
 }
 
 $("#import-validate").addEventListener("click", () => {
   const raw = $("#import-json-input").value;
+  const shape = detectImportShape(raw);
+  if (shape === "bulk") {
+    importMode = "bulk";
+    validateAndPreviewBulk(raw);
+  } else {
+    importMode = "single";
+    validateAndPreviewSingle(raw);
+  }
+});
+
+function validateAndPreviewSingle(raw) {
   const result = validateImportPayload(raw);
   const errBox = $("#import-errors");
   const previewBox = $("#import-preview");
+  $("#import-save").textContent = "Salvar drink";
 
   if (!result.valid) {
-    errBox.textContent = "";
-    const list = document.createElement("ul");
-    for (const err of result.errors) {
-      const li = document.createElement("li");
-      li.textContent = err;
-      list.appendChild(li);
-    }
-    errBox.appendChild(list);
-    errBox.hidden = false;
+    renderErrorList(errBox, result.errors);
     previewBox.hidden = true;
+    previewBox.textContent = "";
     $("#import-save").disabled = true;
     pendingImportDraft = null;
     return;
@@ -804,9 +1014,92 @@ $("#import-validate").addEventListener("click", () => {
   }
   previewBox.hidden = false;
   $("#import-save").disabled = false;
-});
+}
 
-$("#import-save").addEventListener("click", () => {
+function renderErrorList(box, errors) {
+  box.textContent = "";
+  const list = document.createElement("ul");
+  for (const err of errors) {
+    const li = document.createElement("li");
+    li.textContent = err;
+    list.appendChild(li);
+  }
+  box.appendChild(list);
+  box.hidden = false;
+}
+
+function validateAndPreviewBulk(raw) {
+  const result = validateBulkImportPayload(raw);
+  const errBox = $("#import-errors");
+  const previewBox = $("#import-preview");
+
+  if (!result.valid) {
+    renderErrorList(errBox, result.errors);
+    previewBox.hidden = true;
+    previewBox.textContent = "";
+    $("#import-save").disabled = true;
+    pendingBulkItems = null;
+    return;
+  }
+  errBox.hidden = true;
+  pendingBulkItems = result.items.map((item) => ({ ...item, include: item.valid }));
+
+  renderBulkPreview();
+}
+
+function renderBulkPreview() {
+  const previewBox = $("#import-preview");
+  previewBox.textContent = "";
+
+  const validCount = pendingBulkItems.filter((i) => i.include).length;
+  const summary = document.createElement("p");
+  summary.textContent = `${pendingBulkItems.length} item(ns) na lista — ${pendingBulkItems.filter((i) => i.valid).length} válido(s).`;
+  previewBox.appendChild(summary);
+
+  const list = document.createElement("div");
+  list.className = "bulk-item-list";
+  pendingBulkItems.forEach((item, idx) => {
+    const row = document.createElement("label");
+    row.className = "bulk-item-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = item.include;
+    checkbox.disabled = !item.valid;
+    checkbox.addEventListener("change", () => {
+      pendingBulkItems[idx].include = checkbox.checked;
+      updateBulkSaveButton();
+    });
+    row.appendChild(checkbox);
+
+    const text = document.createElement("span");
+    if (item.valid) {
+      text.textContent = `${item.drink.name} — ${spiritLabel[item.drink.base_spirit] || item.drink.base_spirit}`;
+    } else {
+      text.textContent = `Item ${idx + 1}: inválido (${item.errors[0]})`;
+      text.className = "bulk-item-invalid";
+    }
+    row.appendChild(text);
+
+    list.appendChild(row);
+  });
+  previewBox.appendChild(list);
+  previewBox.hidden = false;
+
+  updateBulkSaveButton();
+}
+
+function updateBulkSaveButton() {
+  const count = pendingBulkItems.filter((i) => i.include).length;
+  $("#import-save").textContent = count > 0 ? `Salvar ${count} selecionado(s)` : "Salvar drink";
+  $("#import-save").disabled = count === 0;
+}
+
+$("#import-save").addEventListener("click", async () => {
+  if (importMode === "bulk") {
+    await saveBulkImport();
+    return;
+  }
   if (!pendingImportDraft) return;
   closeDialog(importDialog);
   resetDrinkForm();
@@ -826,6 +1119,34 @@ $("#import-save").addEventListener("click", () => {
 
   openDialog(drinkFormDialog);
 });
+
+async function saveBulkImport() {
+  if (!pendingBulkItems) return;
+  const toSave = pendingBulkItems.filter((i) => i.include);
+  let added = 0;
+  let duplicates = 0;
+  let failed = 0;
+  // Sequential on purpose: keeps IndexedDB transactions simple and avoids
+  // surprising interleavings when many records land at once.
+  for (const item of toSave) {
+    try {
+      await createRecord(item.drink, { rating: null, comment: "", status: "want_to_try" }, {});
+      added += 1;
+    } catch (e) {
+      if (e instanceof DuplicateIdentityError) {
+        duplicates += 1;
+      } else {
+        failed += 1;
+      }
+    }
+  }
+  closeDialog(importDialog);
+  await refreshRecords();
+  const parts = [`${added} adicionado(s)`];
+  if (duplicates) parts.push(`${duplicates} já existiam (não adicionados)`);
+  if (failed) parts.push(`${failed} falharam`);
+  showToast(`Importação em lote: ${parts.join(", ")}.`);
+}
 
 // ---------------------------------------------------------------------
 // Settings / backup / restore

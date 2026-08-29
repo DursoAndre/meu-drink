@@ -48,6 +48,7 @@ body {
   min-height: 100dvh;
   padding-bottom: 2rem;
 }
+body.has-selection-bar { padding-bottom: 5rem; }
 
 h1, h2, h3 {
   font-family: var(--font-display);
@@ -228,6 +229,29 @@ button, input, select, textarea {
   color: var(--text-on-ink);
 }
 
+.select-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -0.15rem 0 0.5rem;
+}
+
+.selection-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  background: var(--ink);
+  color: var(--text-on-ink);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+}
+.selection-bar-actions { display: flex; gap: 0.5rem; }
+
 /* ---------- empty states ---------- */
 
 .empty-state {
@@ -270,6 +294,30 @@ button, input, select, textarea {
   padding: 0;
   cursor: pointer;
   color: inherit;
+  position: relative;
+}
+
+.drink-card-select {
+  display: none;
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(36, 28, 18, 0.55);
+  color: transparent;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  line-height: 1;
+  border: 1.5px solid var(--paper);
+}
+.drink-list.is-selecting .drink-card-select { display: flex; }
+.drink-card-select.is-checked {
+  background: var(--copper);
+  color: #241605;
 }
 
 .drink-card-photo {
@@ -545,6 +593,23 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
 .confidence-medium { background: rgba(192,138,46,0.18); color: var(--copper-deep); }
 .confidence-low { background: rgba(156,59,46,0.12); color: var(--danger); }
 
+.bulk-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.bulk-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.bulk-item-row input[type="checkbox"] { flex: none; }
+.bulk-item-invalid { color: var(--danger); }
+
 .settings-section { border-top: 1px solid var(--paper-line); padding-top: 0.75rem; }
 .settings-section:first-of-type { border-top: none; padding-top: 0; }
 .settings-section h3 { font-size: 1rem; margin-bottom: 0.35rem; }
@@ -575,4 +640,59 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
   box-shadow: var(--shadow);
   font-size: 0.9rem;
   z-index: 50;
+}
+
+/* ---------- PDF export (browser print-to-PDF, no library) ---------- */
+
+#print-area { display: none; }
+
+.print-drink {
+  page-break-inside: avoid;
+  margin-bottom: 28px;
+}
+.print-drink h2 {
+  font-size: 1.3rem;
+  margin: 0 0 0.15rem;
+}
+.print-drink h3 {
+  font-size: 1rem;
+  margin: 0.7rem 0 0.2rem;
+}
+.print-meta {
+  color: #444;
+  font-size: 0.9rem;
+  margin: 0 0 0.4rem;
+  text-transform: capitalize;
+}
+.print-photo {
+  display: block;
+  max-width: 260px;
+  max-height: 260px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius: 8px;
+  margin: 0.4rem 0 0.6rem;
+}
+.print-drink ul, .print-drink ol {
+  margin: 0.2rem 0;
+  padding-left: 1.3rem;
+}
+.print-drink li { margin-bottom: 0.15rem; }
+
+@media print {
+  html, body { background: #fff !important; }
+  body * { visibility: hidden; }
+  #print-area, #print-area * { visibility: visible; }
+  #print-area {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    color: #111;
+    background: #fff;
+  }
+  .print-drink { border-bottom: 1px solid #ccc; padding-bottom: 16px; }
+  .print-drink:last-child { border-bottom: none; }
 }

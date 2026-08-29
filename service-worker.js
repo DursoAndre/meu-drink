@@ -5,7 +5,7 @@
 const scopeKey = new URL(self.registration.scope).pathname.replace(/[^a-z0-9]/gi, "-");
 const CACHE_PREFIX = `meus-drinks-${scopeKey}-`;
 // Bump this suffix (v1 -> v2 -> ...) on every deployment that changes the shell.
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 
 const APP_SHELL = [
   "./",

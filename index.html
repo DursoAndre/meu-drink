@@ -50,6 +50,10 @@
     <button type="button" class="status-tab" data-status="favorite" role="tab" aria-selected="false">Favoritos</button>
   </div>
 
+  <div class="select-bar">
+    <button type="button" id="btn-select-mode" class="link-button">Selecionar para exportar PDF</button>
+  </div>
+
   <div id="empty-state" class="empty-state" hidden>
     <p class="empty-state-title">Nenhum drink por aqui ainda.</p>
     <p class="empty-state-body">Cadastre pelo formulário ou cole uma receita gerada pela IA.</p>
@@ -64,9 +68,20 @@
   <ul id="drink-list" class="drink-list"></ul>
 </main>
 
+<div id="selection-bar" class="selection-bar" hidden>
+  <span id="selection-count">0 selecionados</span>
+  <div class="selection-bar-actions">
+    <button type="button" id="btn-cancel-selection" class="secondary-button">Cancelar</button>
+    <button type="button" id="btn-export-pdf" class="primary-button" disabled>Exportar PDF</button>
+  </div>
+</div>
+
+<div id="print-area"></div>
+
 <template id="drink-card-template">
   <li class="drink-card">
     <button type="button" class="drink-card-open">
+      <span class="drink-card-select" aria-hidden="true">✓</span>
       <div class="drink-card-photo">
         <img class="drink-card-img" alt="" hidden />
         <span class="drink-card-placeholder" aria-hidden="true">🍸</span>
@@ -113,14 +128,20 @@
   <form method="dialog" class="dialog-form" id="import-form">
     <h2>Colar receita gerada pela IA</h2>
     <details class="import-help">
-      <summary>Como pedir isso no chat</summary>
+      <summary>Como pedir isso no chat (1 drink)</summary>
       <p>Mande o link do drink (e a legenda ou um print, se tiver) para o Claude num chat separado, e peça:</p>
       <pre id="import-prompt-template" class="prompt-template"></pre>
       <button type="button" id="copy-prompt" class="link-button">Copiar instrução</button>
     </details>
+    <details class="import-help">
+      <summary>Importar vários de uma vez</summary>
+      <p>Pra cadastrar vários drinks juntos (bom pra configuração inicial), peça uma lista:</p>
+      <pre id="import-prompt-bulk-template" class="prompt-template"></pre>
+      <button type="button" id="copy-prompt-bulk" class="link-button">Copiar instrução</button>
+    </details>
     <label class="field">
       <span>JSON</span>
-      <textarea id="import-json-input" rows="10" placeholder='{"schema_version":"1.0.0","drink":{...}}' spellcheck="false"></textarea>
+      <textarea id="import-json-input" rows="10" placeholder='{"schema_version":"1.0.0","drink":{...}}  ou  [{"drink":{...}}, {"drink":{...}}]' spellcheck="false"></textarea>
     </label>
     <div id="import-errors" class="field-errors" role="alert" hidden></div>
     <div id="import-preview" class="import-preview" hidden></div>
