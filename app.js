@@ -51,6 +51,8 @@ let filters = { status: "", spirit: "", search: "" };
 let editingRecord = null; // { ...record } currently open in the form, or null for "create"
 let pendingPhotoFiles = {}; // { primary?: File|null, secondary?: File|null } — undefined key = untouched
 let existingPhotoUrls = {}; // object URLs for the record currently open in the form
+let viewPhotoUrls = {}; // object URLs for the record currently open in the view dialog
+let currentViewedId = null;
 let currentRating = null;
 let cardObjectUrls = new Map(); // recordId -> {primary?:url, secondary?:url} for list thumbnails
 let pendingImportDraft = null; // {drink, analysis} validated but not yet saved
@@ -231,7 +233,7 @@ async function renderList() {
       if (selectionMode) {
         toggleSelect(record.id, node);
       } else {
-        openEditForm(record.id);
+        openViewDialog(record.id);
       }
     });
     list.appendChild(node);
@@ -331,82 +333,74 @@ function qtyLabel(ing) {
   return unit ? `${ing.amount} ${unit.label}` : String(ing.amount);
 }
 
-async function buildPrintBlock(record) {
+/** Menu-style print entry: photo, name, base spirit, ingredients — no
+ * technique/glassware/instructions/comments (kept deliberately light,
+ * like a bar drink menu rather than a recipe card). */
+async function buildMenuItem(record) {
   const d = record.import_data;
-  const article = document.createElement("article");
-  article.className = "print-drink";
+  const item = document.createElement("article");
+  item.className = "menu-item";
 
-  const h2 = document.createElement("h2");
-  h2.textContent = d.name;
-  article.appendChild(h2);
-
-  const bits = [spiritLabel[d.base_spirit] || d.base_spirit];
-  if (d.technique) bits.push(techniqueLabel[d.technique] || d.technique);
-  if (record.rating) bits.push("★".repeat(record.rating));
-  const metaP = document.createElement("p");
-  metaP.className = "print-meta";
-  metaP.textContent = bits.join(" · ");
-  article.appendChild(metaP);
-
+  const photoWrap = document.createElement("div");
+  photoWrap.className = "menu-item-photo";
   if (record.has_primary_photo) {
     const { primaryPhoto } = await getPhotos(record.id);
     if (primaryPhoto) {
       const img = document.createElement("img");
-      img.className = "print-photo";
       img.alt = "";
       img.src = URL.createObjectURL(primaryPhoto.blob);
-      article.appendChild(img);
+      photoWrap.appendChild(img);
     }
   }
+  if (!photoWrap.firstChild) {
+    item.classList.add("no-photo");
+  } else {
+    item.appendChild(photoWrap);
+  }
+
+  const info = document.createElement("div");
+  info.className = "menu-item-info";
+
+  const h2 = document.createElement("h2");
+  h2.textContent = d.name;
+  info.appendChild(h2);
+
+  const sub = document.createElement("p");
+  sub.className = "menu-item-sub";
+  sub.textContent = spiritLabel[d.base_spirit] || d.base_spirit;
+  info.appendChild(sub);
 
   if (d.ingredients && d.ingredients.length) {
-    const h3 = document.createElement("h3");
-    h3.textContent = "Ingredientes";
-    article.appendChild(h3);
-    const ul = document.createElement("ul");
-    for (const ing of d.ingredients) {
-      const li = document.createElement("li");
-      const qty = qtyLabel(ing);
-      li.textContent = qty ? `${qty} — ${ing.name}` : ing.name;
-      ul.appendChild(li);
-    }
-    article.appendChild(ul);
-  }
-
-  const line2 = [];
-  if (d.glassware) line2.push(`Copo: ${d.glassware}`);
-  if (d.ice) line2.push(`Gelo: ${d.ice}`);
-  if (d.garnish) line2.push(`Guarnição: ${d.garnish}`);
-  if (line2.length) {
     const p = document.createElement("p");
-    p.className = "print-meta";
-    p.textContent = line2.join(" · ");
-    article.appendChild(p);
+    p.className = "menu-item-ingredients";
+    p.textContent = d.ingredients
+      .map((ing) => {
+        const qty = qtyLabel(ing);
+        return qty ? `${ing.name} (${qty})` : ing.name;
+      })
+      .join(" · ");
+    info.appendChild(p);
   }
 
-  if (d.instructions && d.instructions.length) {
-    const h3 = document.createElement("h3");
-    h3.textContent = "Modo de preparo";
-    article.appendChild(h3);
-    const ol = document.createElement("ol");
-    for (const step of d.instructions) {
-      const li = document.createElement("li");
-      li.textContent = step;
-      ol.appendChild(li);
-    }
-    article.appendChild(ol);
-  }
+  item.appendChild(info);
+  return item;
+}
 
-  if (record.comment) {
-    const h3 = document.createElement("h3");
-    h3.textContent = "Comentários";
-    article.appendChild(h3);
-    const p = document.createElement("p");
-    p.textContent = record.comment;
-    article.appendChild(p);
-  }
-
-  return article;
+/** Waits for every <img> inside the container to finish loading (or error),
+ * up to a timeout. window.print() can otherwise fire before freshly-created
+ * blob: image sources have actually rendered, printing a blank spot. */
+function waitForImages(container, timeoutMs = 4000) {
+  const imgs = Array.from(container.querySelectorAll("img"));
+  if (imgs.length === 0) return Promise.resolve();
+  const perImage = imgs.map((img) => {
+    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      img.addEventListener("load", resolve, { once: true });
+      img.addEventListener("error", resolve, { once: true });
+    });
+  });
+  const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs));
+  return Promise.race([Promise.all(perImage), timeout]);
 }
 
 $("#btn-export-pdf").addEventListener("click", async () => {
@@ -417,11 +411,25 @@ $("#btn-export-pdf").addEventListener("click", async () => {
 
   const container = $("#print-area");
   container.textContent = "";
+
+  const header = document.createElement("div");
+  header.className = "print-header";
+  const h1 = document.createElement("h1");
+  h1.textContent = "Meus Drinks";
+  header.appendChild(h1);
+  container.appendChild(header);
+
+  const grid = document.createElement("div");
+  grid.className = "menu-grid";
+  container.appendChild(grid);
+
   // Sequential: avoids holding many decoded photo blobs in memory at once.
   for (const record of ordered) {
-    const block = await buildPrintBlock(record);
-    container.appendChild(block);
+    const item = await buildMenuItem(record);
+    grid.appendChild(item);
   }
+
+  await waitForImages(container);
   window.print();
 });
 
@@ -640,6 +648,153 @@ function setupPhotoInput(inputId, previewId, slot) {
 }
 setupPhotoInput("#f-photo-primary", "#preview-primary", "primary");
 setupPhotoInput("#f-photo-secondary", "#preview-secondary", "secondary");
+
+// ---------------------------------------------------------------------
+// Drink view dialog (read-only)
+// ---------------------------------------------------------------------
+
+const viewDialog = $("#dialog-drink-view");
+
+function clearViewPhotoUrls() {
+  for (const url of Object.values(viewPhotoUrls)) URL.revokeObjectURL(url);
+  viewPhotoUrls = {};
+}
+
+async function openViewDialog(id) {
+  const record = allRecords.find((r) => r.id === id);
+  if (!record) return;
+  const d = record.import_data;
+  currentViewedId = id;
+  clearViewPhotoUrls();
+
+  $("#view-name").textContent = d.name;
+
+  const stamp = $("#view-stamp");
+  stamp.hidden = false;
+  stamp.className = `stamp stamp-${record.status}`;
+  stamp.textContent =
+    record.status === "favorite" ? "★ favorito" : record.status === "tried" ? "✓ já fiz" : "quero fazer";
+
+  const ratingEl = $("#view-rating");
+  if (record.rating) {
+    ratingEl.textContent = "★".repeat(record.rating) + "☆".repeat(5 - record.rating);
+    ratingEl.hidden = false;
+  } else {
+    ratingEl.hidden = true;
+  }
+
+  const spiritTagsParts = [spiritLabel[d.base_spirit] || d.base_spirit];
+  if (d.tags && d.tags.length) spiritTagsParts.push(d.tags.join(", "));
+  $("#view-spirit-tags").textContent = spiritTagsParts.join(" · ");
+
+  buildPourRatio($("#view-pour-ratio"), d.ingredients || []);
+
+  const ingList = $("#view-ingredients-list");
+  ingList.textContent = "";
+  if (d.ingredients && d.ingredients.length) {
+    for (const ing of d.ingredients) {
+      const li = document.createElement("li");
+      const qty = qtyLabel(ing);
+      if (qty) {
+        const span = document.createElement("span");
+        span.className = "ingredient-amount";
+        span.textContent = qty;
+        li.appendChild(span);
+      }
+      const nameText = qty ? ` ${ing.name}` : ing.name;
+      li.appendChild(document.createTextNode(nameText + (ing.optional ? " (opcional)" : "")));
+      ingList.appendChild(li);
+    }
+    $("#view-ingredients-section").hidden = false;
+  } else {
+    $("#view-ingredients-section").hidden = true;
+  }
+
+  const metaParts = [];
+  if (d.technique) metaParts.push(techniqueLabel[d.technique] || d.technique);
+  if (d.glassware) metaParts.push(`Copo: ${d.glassware}`);
+  if (d.ice) metaParts.push(`Gelo: ${d.ice}`);
+  if (d.garnish) metaParts.push(`Guarnição: ${d.garnish}`);
+  if (d.estimated_abv_percent != null) metaParts.push(`~${d.estimated_abv_percent}% ABV`);
+  const metaLine = $("#view-meta-line");
+  if (metaParts.length) {
+    metaLine.textContent = metaParts.join(" · ");
+    metaLine.hidden = false;
+  } else {
+    metaLine.hidden = true;
+  }
+
+  const instrList = $("#view-instructions-list");
+  instrList.textContent = "";
+  if (d.instructions && d.instructions.length) {
+    for (const step of d.instructions) {
+      const li = document.createElement("li");
+      li.textContent = step;
+      instrList.appendChild(li);
+    }
+    $("#view-instructions-section").hidden = false;
+  } else {
+    $("#view-instructions-section").hidden = true;
+  }
+
+  const sourceSection = $("#view-source-section");
+  const sourceEl = $("#view-source");
+  sourceEl.textContent = "";
+  if (d.source) {
+    if (/^https?:\/\//i.test(d.source)) {
+      const a = document.createElement("a");
+      a.href = d.source;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = d.source;
+      sourceEl.appendChild(a);
+    } else {
+      sourceEl.textContent = d.source;
+    }
+    sourceSection.hidden = false;
+  } else {
+    sourceSection.hidden = true;
+  }
+
+  const commentSection = $("#view-comment-section");
+  if (record.comment) {
+    $("#view-comment").textContent = record.comment;
+    commentSection.hidden = false;
+  } else {
+    commentSection.hidden = true;
+  }
+
+  const primaryBox = $("#view-photo-primary");
+  const secondaryBox = $("#view-photo-secondary");
+  primaryBox.hidden = true;
+  secondaryBox.hidden = true;
+  if (record.has_primary_photo || record.has_secondary_photo) {
+    const { primaryPhoto, secondaryPhoto } = await getPhotos(record.id);
+    if (primaryPhoto) {
+      const url = URL.createObjectURL(primaryPhoto.blob);
+      viewPhotoUrls.primary = url;
+      $("img", primaryBox).src = url;
+      primaryBox.hidden = false;
+    }
+    if (secondaryPhoto) {
+      const url = URL.createObjectURL(secondaryPhoto.blob);
+      viewPhotoUrls.secondary = url;
+      $("img", secondaryBox).src = url;
+      secondaryBox.hidden = false;
+    }
+  }
+
+  openDialog(viewDialog);
+}
+
+$("#view-edit-btn").addEventListener("click", () => {
+  closeDialog(viewDialog);
+  if (currentViewedId) openEditForm(currentViewedId);
+});
+
+viewDialog.addEventListener("close", () => {
+  clearViewPhotoUrls();
+});
 
 // ---------------------------------------------------------------------
 // Drink form dialog (create / edit)

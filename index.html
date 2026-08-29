@@ -153,6 +153,56 @@
   </form>
 </dialog>
 
+<!-- Drink view dialog (read-only) -->
+<dialog id="dialog-drink-view" class="app-dialog app-dialog-wide">
+  <form method="dialog" class="dialog-form view-form">
+    <div class="view-header">
+      <h2 id="view-name"></h2>
+      <span id="view-stamp" class="stamp" hidden></span>
+    </div>
+    <p id="view-rating" class="view-rating" hidden></p>
+
+    <div id="view-photo-primary" class="view-photo" hidden>
+      <img alt="" />
+    </div>
+
+    <p id="view-spirit-tags" class="view-subline"></p>
+    <div id="view-pour-ratio" class="pour-ratio" hidden></div>
+
+    <div id="view-ingredients-section" hidden>
+      <h3>Ingredientes</h3>
+      <ul id="view-ingredients-list" class="view-ingredients"></ul>
+    </div>
+
+    <p id="view-meta-line" class="view-subline" hidden></p>
+
+    <div id="view-instructions-section" hidden>
+      <h3>Modo de preparo</h3>
+      <ol id="view-instructions-list" class="view-instructions"></ol>
+    </div>
+
+    <div id="view-source-section" hidden>
+      <h3>Fonte</h3>
+      <p id="view-source"></p>
+    </div>
+
+    <div id="view-comment-section" hidden>
+      <h3>Comentários</h3>
+      <p id="view-comment" class="view-comment"></p>
+    </div>
+
+    <div id="view-photo-secondary" class="view-photo view-photo-secondary" hidden>
+      <span class="view-photo-label">Print / referência</span>
+      <img alt="" />
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" class="secondary-button" data-close>Fechar</button>
+      <button type="button" id="view-edit-btn" class="primary-button">Editar</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- Drink form dialog (create + edit) -->
 <dialog id="dialog-drink-form" class="app-dialog app-dialog-wide">
   <form method="dialog" class="dialog-form" id="drink-form">
