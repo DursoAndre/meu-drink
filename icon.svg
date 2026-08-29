@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Meus Drinks">
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#1B2420"/>
+  <polygon points="140,160 372,160 256,304" fill="#C08A2E"/>
+  <line x1="160" y1="178" x2="352" y2="178" stroke="#E6C48C" stroke-width="6"/>
+  <line x1="256" y1="304" x2="256" y2="388" stroke="#F2E8D5" stroke-width="14" stroke-linecap="round"/>
+  <rect x="196" y="392" width="120" height="14" rx="7" fill="#F2E8D5"/>
+  <line x1="336" y1="150" x2="336" y2="168" stroke="#7A8B5C" stroke-width="4"/>
+  <circle cx="336" cy="168" r="15" fill="#7A8B5C"/>
+</svg>

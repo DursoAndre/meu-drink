@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'" />
+<title>Meus Drinks</title>
+<meta name="description" content="Catálogo pessoal de receitas de drinks — local, offline, sem login." />
+<meta name="theme-color" content="#1B2420" />
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" href="./icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header-title">
+    <img src="./icon.svg" alt="" class="app-logo" width="28" height="28" />
+    <h1>Meus Drinks</h1>
+  </div>
+  <div class="app-header-actions">
+    <button type="button" id="btn-settings" class="icon-button" aria-label="Backup e configurações" title="Backup e configurações">⚙</button>
+    <button type="button" id="btn-add" class="primary-button">+ Novo drink</button>
+  </div>
+</header>
+
+<div id="backup-pending-banner" class="banner banner-warning" hidden>
+  <span>Você tem alterações que ainda não estão em um backup.</span>
+  <button type="button" id="banner-backup-now" class="link-button">Fazer backup agora</button>
+</div>
+
+<div id="update-banner" class="banner banner-info" hidden>
+  <span>Uma nova versão do app está pronta.</span>
+  <button type="button" id="update-now" class="link-button">Atualizar</button>
+</div>
+
+<main class="app-main">
+  <div class="toolbar">
+    <input type="search" id="search-input" placeholder="Buscar por nome, ingrediente, base ou tag…" aria-label="Buscar drinks" />
+    <select id="filter-spirit" aria-label="Filtrar por base">
+      <option value="">Todas as bases</option>
+    </select>
+  </div>
+
+  <div class="status-tabs" role="tablist" aria-label="Filtrar por status">
+    <button type="button" class="status-tab is-active" data-status="" role="tab" aria-selected="true">Todos</button>
+    <button type="button" class="status-tab" data-status="want_to_try" role="tab" aria-selected="false">Quero fazer</button>
+    <button type="button" class="status-tab" data-status="tried" role="tab" aria-selected="false">Já fiz</button>
+    <button type="button" class="status-tab" data-status="favorite" role="tab" aria-selected="false">Favoritos</button>
+  </div>
+
+  <div id="empty-state" class="empty-state" hidden>
+    <p class="empty-state-title">Nenhum drink por aqui ainda.</p>
+    <p class="empty-state-body">Cadastre pelo formulário ou cole uma receita gerada pela IA.</p>
+    <button type="button" id="empty-add" class="primary-button">+ Novo drink</button>
+  </div>
+
+  <div id="no-results" class="empty-state" hidden>
+    <p class="empty-state-title">Nada encontrado.</p>
+    <p class="empty-state-body">Tente outro termo ou limpe os filtros.</p>
+  </div>
+
+  <ul id="drink-list" class="drink-list"></ul>
+</main>
+
+<template id="drink-card-template">
+  <li class="drink-card">
+    <button type="button" class="drink-card-open">
+      <div class="drink-card-photo">
+        <img class="drink-card-img" alt="" hidden />
+        <span class="drink-card-placeholder" aria-hidden="true">🍸</span>
+      </div>
+      <div class="drink-card-body">
+        <div class="drink-card-top">
+          <h2 class="drink-card-name"></h2>
+          <span class="stamp" hidden></span>
+        </div>
+        <p class="drink-card-spirit"></p>
+        <div class="pour-ratio" aria-hidden="true"></div>
+        <div class="drink-card-meta">
+          <span class="drink-card-rating"></span>
+          <span class="drink-card-tags"></span>
+        </div>
+      </div>
+    </button>
+  </li>
+</template>
+
+<!-- Add / choose method dialog -->
+<dialog id="dialog-add-choice" class="app-dialog">
+  <form method="dialog" class="dialog-form">
+    <h2>Novo drink</h2>
+    <p class="dialog-subtitle">Como você quer cadastrar?</p>
+    <div class="choice-grid">
+      <button type="button" id="choice-form" class="choice-card">
+        <strong>Formulário</strong>
+        <span>Preencher os campos manualmente</span>
+      </button>
+      <button type="button" id="choice-import" class="choice-card">
+        <strong>Colar JSON da IA</strong>
+        <span>Colar um rascunho gerado no chat</span>
+      </button>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="secondary-button" data-close>Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Import JSON dialog -->
+<dialog id="dialog-import" class="app-dialog">
+  <form method="dialog" class="dialog-form" id="import-form">
+    <h2>Colar receita gerada pela IA</h2>
+    <details class="import-help">
+      <summary>Como pedir isso no chat</summary>
+      <p>Mande o link do drink (e a legenda ou um print, se tiver) para o Claude num chat separado, e peça:</p>
+      <pre id="import-prompt-template" class="prompt-template"></pre>
+      <button type="button" id="copy-prompt" class="link-button">Copiar instrução</button>
+    </details>
+    <label class="field">
+      <span>JSON</span>
+      <textarea id="import-json-input" rows="10" placeholder='{"schema_version":"1.0.0","drink":{...}}' spellcheck="false"></textarea>
+    </label>
+    <div id="import-errors" class="field-errors" role="alert" hidden></div>
+    <div id="import-preview" class="import-preview" hidden></div>
+    <div class="dialog-actions">
+      <button type="button" class="secondary-button" data-close>Cancelar</button>
+      <button type="button" id="import-validate" class="secondary-button">Validar</button>
+      <button type="button" id="import-save" class="primary-button" disabled>Salvar drink</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Drink form dialog (create + edit) -->
+<dialog id="dialog-drink-form" class="app-dialog app-dialog-wide">
+  <form method="dialog" class="dialog-form" id="drink-form">
+    <h2 id="drink-form-title">Novo drink</h2>
+    <div id="draft-notice" class="import-preview" hidden></div>
+
+    <div class="form-grid">
+      <label class="field">
+        <span>Nome*</span>
+        <input type="text" id="f-name" required maxlength="160" />
+      </label>
+
+      <label class="field">
+        <span>Base do drink*</span>
+        <select id="f-base-spirit" required></select>
+      </label>
+
+      <label class="field">
+        <span>Técnica</span>
+        <select id="f-technique">
+          <option value="">—</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Copo</span>
+        <input type="text" id="f-glassware" maxlength="60" />
+      </label>
+
+      <label class="field">
+        <span>Gelo</span>
+        <input type="text" id="f-ice" maxlength="60" />
+      </label>
+
+      <label class="field">
+        <span>Guarnição</span>
+        <input type="text" id="f-garnish" maxlength="120" />
+      </label>
+
+      <label class="field">
+        <span>Tags (separadas por vírgula)</span>
+        <input type="text" id="f-tags" placeholder="cítrico, clássico, verão" />
+      </label>
+
+      <label class="field">
+        <span>Fonte / link de referência</span>
+        <input type="url" id="f-source" placeholder="https://instagram.com/…" maxlength="500" />
+      </label>
+
+      <label class="field">
+        <span>ABV estimado (%)</span>
+        <input type="number" id="f-abv" min="0" max="100" step="0.1" />
+      </label>
+
+      <label class="field">
+        <span>Status</span>
+        <select id="f-status"></select>
+      </label>
+    </div>
+
+    <fieldset class="field-group">
+      <legend>Ingredientes*</legend>
+      <div id="ingredients-list" class="repeat-list"></div>
+      <button type="button" id="add-ingredient" class="link-button">+ Ingrediente</button>
+    </fieldset>
+
+    <fieldset class="field-group">
+      <legend>Modo de preparo*</legend>
+      <div id="instructions-list" class="repeat-list"></div>
+      <button type="button" id="add-instruction" class="link-button">+ Passo</button>
+    </fieldset>
+
+    <div class="form-grid">
+      <label class="field">
+        <span>Sua nota</span>
+        <div id="rating-input" class="rating-input" role="radiogroup" aria-label="Nota de 1 a 5"></div>
+      </label>
+    </div>
+
+    <label class="field">
+      <span>Comentários</span>
+      <textarea id="f-comment" rows="3" maxlength="4000"></textarea>
+    </label>
+
+    <div class="form-grid">
+      <label class="field">
+        <span>Foto do drink</span>
+        <input type="file" id="f-photo-primary" accept="image/jpeg,image/png,image/webp" />
+        <div class="photo-preview" id="preview-primary" hidden>
+          <img alt="Foto do drink" />
+          <button type="button" class="link-button" data-clear-photo="primary">Remover</button>
+        </div>
+      </label>
+      <label class="field">
+        <span>Print / referência (opcional)</span>
+        <input type="file" id="f-photo-secondary" accept="image/jpeg,image/png,image/webp" />
+        <div class="photo-preview" id="preview-secondary" hidden>
+          <img alt="Print de referência" />
+          <button type="button" class="link-button" data-clear-photo="secondary">Remover</button>
+        </div>
+      </label>
+    </div>
+
+    <div id="form-errors" class="field-errors" role="alert" hidden></div>
+
+    <div class="dialog-actions dialog-actions-split">
+      <button type="button" id="delete-drink" class="danger-button" hidden>Excluir</button>
+      <div class="dialog-actions-right">
+        <button type="button" class="secondary-button" data-close>Cancelar</button>
+        <button type="button" id="save-drink" class="primary-button">Salvar</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<!-- Settings / backup dialog -->
+<dialog id="dialog-settings" class="app-dialog">
+  <form method="dialog" class="dialog-form">
+    <h2>Backup e configurações</h2>
+
+    <section class="settings-section">
+      <h3>Backup</h3>
+      <p id="backup-status-text" class="settings-note"></p>
+      <button type="button" id="do-backup" class="primary-button">Exportar backup</button>
+    </section>
+
+    <section class="settings-section">
+      <h3>Restaurar</h3>
+      <p class="settings-note">Escolha um arquivo de backup (.json) para restaurar.</p>
+      <input type="file" id="restore-file-input" accept="application/json" />
+      <div id="restore-status" class="settings-note"></div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Sobre</h3>
+      <p class="settings-note">Os dados ficam só neste navegador/dispositivo. Não sincroniza automaticamente entre aparelhos — use o backup para migrar.</p>
+    </section>
+
+    <div class="dialog-actions">
+      <button type="button" class="secondary-button" data-close>Fechar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Restore conflict dialog -->
+<dialog id="dialog-restore-conflicts" class="app-dialog">
+  <form method="dialog" class="dialog-form">
+    <h2>Alguns drinks já existem</h2>
+    <p class="dialog-subtitle">Escolha o que fazer com cada um. Os demais registros do backup serão adicionados normalmente.</p>
+    <div id="conflict-list" class="repeat-list"></div>
+    <div class="dialog-actions">
+      <button type="button" class="secondary-button" data-close>Cancelar restauração</button>
+      <button type="button" id="confirm-restore" class="primary-button">Restaurar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Backup confirmation dialog -->
+<dialog id="dialog-backup-confirm" class="app-dialog">
+  <form method="dialog" class="dialog-form">
+    <h2>Backup gerado</h2>
+    <p class="dialog-subtitle" id="backup-confirm-text">Confirme que o arquivo foi salvo em algum lugar seguro (Arquivos, Drive, e-mail…).</p>
+    <div class="dialog-actions">
+      <button type="button" class="secondary-button" data-close>Ainda não salvei</button>
+      <button type="button" id="confirm-backup-saved" class="primary-button">Salvei o arquivo</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
