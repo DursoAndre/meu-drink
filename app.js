@@ -22,6 +22,8 @@ import {
   getPhotos,
   getRevisionInfo,
   markBackedUp,
+  getMenuTitle,
+  setMenuTitle,
   onRemoteChange,
   DuplicateIdentityError,
   ConcurrencyError,
@@ -412,11 +414,21 @@ $("#btn-export-pdf").addEventListener("click", async () => {
   const container = $("#print-area");
   container.textContent = "";
 
+  const menuTitle = (await getMenuTitle()) || "Meus Drinks";
   const header = document.createElement("div");
   header.className = "print-header";
+  const iconTemplate = $("#menu-glass-icon-template");
+  header.appendChild(iconTemplate.content.cloneNode(true));
   const h1 = document.createElement("h1");
-  h1.textContent = "Meus Drinks";
+  h1.textContent = menuTitle;
   header.appendChild(h1);
+  const sub = document.createElement("p");
+  sub.className = "print-header-sub";
+  sub.textContent = "Cardápio de Drinks";
+  header.appendChild(sub);
+  const rule = document.createElement("div");
+  rule.className = "print-header-rule";
+  header.appendChild(rule);
   container.appendChild(header);
 
   const grid = document.createElement("div");
@@ -1013,7 +1025,7 @@ const PROMPT_TEMPLATE = `Analise esse drink (link, legenda e/ou print em anexo) 
   "schema_version": "1.0.0",
   "drink": {
     "name": "",
-    "base_spirit": "rum | gin | vodka | whisky | tequila | cachaca | conhaque | licor | vinho | cerveja | sem_alcool | outro",
+    "base_spirit": "rum | gin | vodka | whisky | tequila | mezcal | cachaca | pisco | conhaque | licor | vinho | cerveja | sem_alcool | outro",
     "tags": [],
     "ingredients": [{"name": "", "amount": 0, "unit": "ml | oz | dash | barspoon | piece | to_taste", "optional": false}],
     "technique": "build | stir | shake | blend | muddle | other",
@@ -1041,7 +1053,7 @@ const PROMPT_TEMPLATE_BULK = `Analise cada um desses drinks (links, legendas e/o
     {
       "drink": {
         "name": "",
-        "base_spirit": "rum | gin | vodka | whisky | tequila | cachaca | conhaque | licor | vinho | cerveja | sem_alcool | outro",
+        "base_spirit": "rum | gin | vodka | whisky | tequila | mezcal | cachaca | pisco | conhaque | licor | vinho | cerveja | sem_alcool | outro",
         "tags": [],
         "ingredients": [{"name": "", "amount": 0, "unit": "ml | oz | dash | barspoon | piece | to_taste", "optional": false}],
         "technique": "build | stir | shake | blend | muddle | other",
@@ -1310,9 +1322,15 @@ async function saveBulkImport() {
 const settingsDialog = $("#dialog-settings");
 $("#btn-settings").addEventListener("click", async () => {
   await refreshBackupBanner();
+  $("#menu-title-input").value = await getMenuTitle();
   openDialog(settingsDialog);
 });
 $("#banner-backup-now").addEventListener("click", () => openDialog(settingsDialog));
+
+$("#menu-title-input").addEventListener("change", async () => {
+  await setMenuTitle($("#menu-title-input").value.trim());
+  showToast("Nome do cardápio salvo.");
+});
 
 let pendingBackupRevision = null;
 const backupConfirmDialog = $("#dialog-backup-confirm");

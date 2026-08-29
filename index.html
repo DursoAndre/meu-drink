@@ -78,6 +78,16 @@
 
 <div id="print-area"></div>
 
+<template id="menu-glass-icon-template">
+  <svg viewBox="0 0 100 100" class="print-header-icon-svg" aria-hidden="true">
+    <polygon points="24,26 76,26 50,54" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/>
+    <line x1="50" y1="54" x2="50" y2="80" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+    <line x1="34" y1="80" x2="66" y2="80" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+    <line x1="30" y1="32" x2="62" y2="32" stroke="currentColor" stroke-width="2.5"/>
+    <circle cx="68" cy="30" r="4.5" fill="currentColor"/>
+  </svg>
+</template>
+
 <template id="drink-card-template">
   <li class="drink-card">
     <button type="button" class="drink-card-open">
@@ -322,6 +332,12 @@
 <dialog id="dialog-settings" class="app-dialog">
   <form method="dialog" class="dialog-form">
     <h2>Backup e configurações</h2>
+
+    <section class="settings-section">
+      <h3>Cardápio exportado</h3>
+      <p class="settings-note">Nome que aparece no topo do PDF exportado.</p>
+      <input type="text" id="menu-title-input" placeholder="Ex: Bar do Durso" maxlength="60" />
+    </section>
 
     <section class="settings-section">
       <h3>Backup</h3>

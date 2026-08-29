@@ -4,7 +4,7 @@ Catálogo pessoal de receitas de drinks. PWA local-first: sem login, sem servido
 
 ## O que tem
 
-- Nome, base (rum, gin, vodka, whisky, tequila, cachaça, conhaque, licor, vinho, cerveja, sem álcool, outro), tags livres
+- Nome, base (rum, gin, vodka, whisky, tequila, mezcal, cachaça, pisco, conhaque, licor, vinho, cerveja, sem álcool, outro), tags livres
 - Ingredientes com quantidade e unidade, técnica de preparo, copo, gelo, guarnição, passo a passo
 - Foto do drink e um segundo campo de foto para print/referência — ambos opcionais
 - Link de referência (Instagram, YouTube etc.) — opcional

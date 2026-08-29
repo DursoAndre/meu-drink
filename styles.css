@@ -615,6 +615,16 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
 .settings-section h3 { font-size: 1rem; margin-bottom: 0.35rem; }
 .settings-note { font-size: 0.88rem; color: var(--text-on-paper-muted); margin: 0.25rem 0 0.5rem; }
 
+#menu-title-input {
+  width: 100%;
+  font-size: 1rem;
+  color: var(--text-on-paper);
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
 .conflict-row {
   display: flex;
   align-items: center;
@@ -726,16 +736,42 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
 
 #print-area { display: none; }
 
-.print-header { margin-bottom: 18px; }
+.print-header {
+  text-align: center;
+  margin-bottom: 26px;
+  padding-bottom: 16px;
+}
+.print-header-icon-svg {
+  width: 42px;
+  height: 42px;
+  color: var(--copper-deep);
+  margin-bottom: 2px;
+}
 .print-header h1 {
-  font-size: 1.7rem;
+  font-family: var(--font-display);
+  font-size: 1.9rem;
   letter-spacing: 0.02em;
+  margin: 0.1rem 0 0.15rem;
+  color: var(--ink);
+}
+.print-header-sub {
+  margin: 0 0 0.7rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--copper-deep);
+}
+.print-header-rule {
+  width: 90px;
+  margin: 0 auto;
+  border-top: 3px solid var(--copper);
+  border-radius: 2px;
 }
 
 .menu-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 22px 20px;
+  gap: 16px 16px;
 }
 
 .menu-item {
@@ -744,8 +780,10 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
   align-items: flex-start;
   break-inside: avoid;
   page-break-inside: avoid;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 14px;
+  border: 1px solid var(--paper-line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fffdf8;
 }
 .menu-item.no-photo .menu-item-info { padding-left: 0; }
 
@@ -756,6 +794,7 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
   border-radius: 8px;
   overflow: hidden;
   background: #eee;
+  border: 1px solid var(--paper-line);
 }
 .menu-item-photo img {
   width: 100%;
@@ -766,16 +805,18 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
 
 .menu-item-info { min-width: 0; }
 .menu-item-info h2 {
+  font-family: var(--font-display);
   font-size: 1.05rem;
   margin: 0 0 0.1rem;
   line-height: 1.2;
+  color: var(--ink);
 }
 .menu-item-sub {
   margin: 0 0 0.3rem;
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #7a6a4a;
+  color: var(--copper-deep);
 }
 .menu-item-ingredients {
   margin: 0;
@@ -785,7 +826,7 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
 }
 
 @media print {
-  html, body { background: #fff !important; }
+  html, body { background: var(--paper) !important; }
   body * { visibility: hidden; }
   #print-area, #print-area * { visibility: visible; }
   #print-area {
@@ -794,10 +835,12 @@ dialog.app-dialog::backdrop { background: rgba(15, 20, 17, 0.55); }
     left: 0;
     top: 0;
     width: 100%;
+    padding: 18px 14px 40px;
     color: #111;
-    background: #fff;
+    background: var(--paper);
+    border: 6px double var(--copper);
+    outline: 14px solid var(--paper);
   }
-  .menu-item { border-bottom-color: #ccc; }
 }
 
 @media print and (max-width: 480px) {

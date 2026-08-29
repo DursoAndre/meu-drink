@@ -140,6 +140,19 @@ export async function markBackedUp(revision) {
   });
 }
 
+/** The user's custom name for their exported menu (e.g. "Bar do Durso"). */
+export async function getMenuTitle() {
+  return withTransaction(["meta"], "readonly", async (tx) => {
+    return getMetaValue(tx, "menuTitle", "");
+  });
+}
+
+export async function setMenuTitle(title) {
+  return withTransaction(["meta"], "readwrite", async (tx) => {
+    setMetaValue(tx, "menuTitle", title);
+  });
+}
+
 function makeId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
